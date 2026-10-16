@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Track a delivery &mdash; Cyclone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  :root{
+    --ink:#17191b; --body:#4a4a4a; --mute:#6b6d5f;
+    --brand:#FFCC00; --line:rgba(23,25,27,.12);
+  }
+  html,body{margin:0;padding:0}
+  body{background:#FFCC00;font-family:"Inter",system-ui,sans-serif;
+    color:var(--ink);font-size:16.5px;line-height:1.55;-webkit-font-smoothing:antialiased;
+    padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  @media(min-width:720px){
+    body{background:
+      radial-gradient(90% 60% at 50% -8%, rgba(255,255,255,.34) 0%, rgba(255,255,255,0) 62%),
+      radial-gradient(130% 95% at 50% 112%, rgba(120,84,0,.38) 0%, rgba(120,84,0,0) 58%),
+      #FFCC00;
+      background-attachment:fixed}
+  }
+  .wrap{max-width:540px;margin:0 auto;padding:40px 22px 60px}
+  .mark{display:block;width:150px;height:auto;margin:0 0 30px}
+
+  .card{background:#fff;border-radius:18px;padding:30px 28px 26px;
+    box-shadow:0 1px 2px rgba(90,64,0,.10), 0 8px 20px -8px rgba(90,64,0,.22),
+      0 26px 48px -26px rgba(90,64,0,.42)}
+  h1{font-family:"Nunito",system-ui,sans-serif;font-size:28px;font-weight:800;
+    letter-spacing:-.03em;margin:0 0 6px}
+  .sub{font-size:16px;color:var(--body);margin:0 0 24px}
+
+  label{display:block;font-family:"Nunito",system-ui,sans-serif;font-size:12.5px;
+    font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#9a9c90;margin-bottom:9px}
+  input{width:100%;border:1.5px solid var(--line);border-radius:14px;padding:16px 18px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:21px;
+    letter-spacing:.08em;color:var(--ink);background:#fff}
+  input:focus{outline:none;border-color:var(--ink)}
+
+  button{width:100%;margin-top:14px;background:var(--ink);color:#fff;border:0;
+    border-radius:14px;padding:17px;font-family:"Nunito",system-ui,sans-serif;
+    font-size:17px;font-weight:800;cursor:pointer}
+  button:hover{background:#000;color:var(--brand)}
+  button[disabled]{opacity:.5;cursor:default}
+
+  .out{margin-top:22px;padding:22px 24px;border-radius:14px;background:var(--ink);color:#fff}
+  .out[hidden]{display:none}
+  .out b{display:block;font-family:"Nunito",system-ui,sans-serif;font-size:27px;
+    font-weight:800;letter-spacing:-.02em;color:var(--brand);margin-bottom:4px}
+  .out span{color:rgba(255,255,255,.82);font-size:15.5px}
+  .out.miss{background:#FFF3C4;color:var(--ink)}
+  .out.miss b{color:var(--ink);font-size:21px}
+  .out.miss span{color:var(--body)}
+
+  .foot{margin-top:22px;font-size:14.5px;color:#8a6a2a;text-align:center}
+  .foot a{color:inherit;font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img class="mark" src="/img/cyclone-mark.png" alt="Cyclone">
+
+  <div class="card">
+    <h1>Track a delivery</h1>
+    <p class="sub">Put in the job number from your text message.</p>
+
+    <label for="ref">Job number</label>
+    <input id="ref" inputmode="numeric" autocomplete="off" placeholder="11097627" maxlength="12">
+    <button id="go" type="button">Check</button>
+
+    <div class="out" id="out" hidden></div>
+  </div>
+
+  <p class="foot">Something not right? Ring us on <a href="tel:014255722">01 425 5722</a>.</p>
+</div>
+
+<script>
+(function(){
+  var ref = document.getElementById('ref');
+  var go  = document.getElementById('go');
+  var out = document.getElementById('out');
+
+  function when(iso){
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d)) return '';
+    var today = new Date(); today.setHours(0,0,0,0);
+    var t = d.toLocaleTimeString('en-IE', { hour:'2-digit', minute:'2-digit', hour12:false });
+    if (d >= today) return 'at ' + t + ' today';
+    return 'on ' + d.toLocaleDateString('en-IE', { day:'numeric', month:'short' }) + ', ' + t;
+  }
+
+  function show(cls, head, sub){
+    out.className = 'out' + (cls ? ' ' + cls : '');
+    out.innerHTML = '<b>' + head + '</b>' + (sub ? '<span>' + sub + '</span>' : '');
+    out.hidden = false;
+  }
+
+  function check(){
+    var v = (ref.value || '').replace(/[^0-9]/g, '');
+    if (!v) { ref.focus(); return; }
+    go.disabled = true;
+    show('miss', 'Checking\u2026', '');
+
+    fetch('/api/track?ref=' + encodeURIComponent(v))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        go.disabled = false;
+        if (d && d.ok) {
+          show('', d.status, when(d.at));
+        } else {
+          /* The same answer for a wrong number and one with nothing on it yet:
+             telling them apart would let somebody map which numbers exist. */
+          show('miss', 'Nothing on that number',
+               'Check the digits from your text. If it was booked in the last few minutes it may not be on the system yet.');
+        }
+      })
+      .catch(function(){
+        go.disabled = false;
+        show('miss', 'Could not check just now', 'Try again in a moment, or ring 01 425 5722.');
+      });
+  }
+
+  go.addEventListener('click', check);
+  ref.addEventListener('keydown', function(e){ if (e.key === 'Enter') check(); });
+
+  /* A link can carry the number: /track?ref=11097627 opens straight to it. */
+  var q = new URLSearchParams(location.search).get('ref');
+  if (q) { ref.value = q.replace(/[^0-9]/g, ''); check(); }
+})();
+</script>
+</body>
+</html>
